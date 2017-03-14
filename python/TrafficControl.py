@@ -73,7 +73,7 @@ class RawImageApp(tk.Frame):
 		self.trafficPanel.pack(side=tk.TOP, anchor=tk.W, fill=tk.BOTH, pady=10)
 		self.ctrlPanel.pack(side=tk.TOP, anchor=tk.W, fill=tk.BOTH, pady=10)
 		self.wlbt = Walabot()
-		self.trafficLights = TrafficLights(int(round(time.time() * 1000)))
+		self.trafficLights = TrafficLights(self.srlPanel, int(round(time.time() * 1000)))
 
 	def initAppLoop(self):
 		
@@ -96,6 +96,7 @@ class RawImageApp(tk.Frame):
 				return
 				
 			self.ctrlPanel.statusVar.set('MCU_CONNECTED')
+			self.trafficLights.resetLights()
 		except serial.SerialException:
 			self.ctrlPanel.statusVar.set('MCU_NOT_FOUND')
 			return		
@@ -133,7 +134,7 @@ class RawImageApp(tk.Frame):
 		
 		
 		#millis = int(round(time.time() * 1000))
-		self.trafficLights.update(self.srlPanel, int(round(time.time() * 1000)))
+		self.trafficLights.update(int(round(time.time() * 1000)))
 
 class WalabotPanel(tk.LabelFrame):
 
@@ -269,17 +270,18 @@ class LightStates:
 			
 class TrafficLights():
 
-	def __init__(self, sysTime):
+	def __init__(self, srlPanel, sysTime):
 		self.lightState = LightStates.both_red_1
 		self.time = sysTime
 		self.stateTime = []
-		self.stateTime.append(5000)
-		self.stateTime.append(3000)
-		self.stateTime.append(60000)
+		self.stateTime.append(500)
+		self.stateTime.append(300)
+		self.stateTime.append(6000)
 		self.stateTime.append(self.stateTime[1])
 		self.stateTime.append(self.stateTime[0])
-		self.stateTime.append(15000)
-		self.stateTime.append(5000)
+		self.stateTime.append(1500)
+		self.stateTime.append(500)
+		self.srlPanel = srlPanel
 		
 	def get_lightState(self):
 		return self.lightState
@@ -300,51 +302,42 @@ class TrafficLights():
 		elif stateName == LightStates.ped_green_flashing:
 			self.stateTime[6] = millis
 		
-	def update(self, srlPanel, sysTime):
+	def update(self, sysTime):
 		stateCycleTime = sysTime - self.time
-		
-		print()
-		
+				
 		if(stateCycleTime > self.stateTime[0]) and (self.lightState == LightStates.both_red_1):
 			self.lightState = LightStates.car_red_and_yellow
 			self.time = sysTime
-			print('c1')
-			srlPanel.writeSerialData(self, 'c1')
+			self.srlPanel.writeSerialData(self, 'c1')
 		elif(self.lightState == LightStates.car_red_and_yellow) and (stateCycleTime > self.stateTime[1]):
 			self.lightState = LightStates.car_green
 			self.time = sysTime
-			print('c2')
-			srlPanel.writeSerialData(self, 'c2')
+			self.srlPanel.writeSerialData(self, 'c2')
 		elif(self.lightState == LightStates.car_green) and (stateCycleTime > self.stateTime[2]):
 			self.lightState = LightStates.car_yellow
 			self.time = sysTime
-			print('c3')
-			srlPanel.writeSerialData(self, 'c3')
+			self.srlPanel.writeSerialData(self, 'c3')
 		elif(self.lightState == LightStates.car_yellow) and (stateCycleTime > self.stateTime[3]):
 			self.lightState = LightStates.both_red_2
 			self.time = sysTime
-			print('c0')
-			srlPanel.writeSerialData(self, 'c0')
+			self.srlPanel.writeSerialData(self, 'c0')
 		elif(self.lightState == LightStates.both_red_2) and (stateCycleTime > self.stateTime[4]):
 			self.lightState = LightStates.ped_green
 			self.time = sysTime
-			print('p1')
-			srlPanel.writeSerialData(self, 'p1')
+			self.srlPanel.writeSerialData(self, 'p1')
 		elif(self.lightState == LightStates.ped_green) and (stateCycleTime > self.stateTime[5]):
 			self.lightState = LightStates.ped_green_flashing
 			self.time = sysTime
-			print('p2')
-			srlPanel.writeSerialData(self, 'p2')
+			self.srlPanel.writeSerialData(self, 'p2')
 		elif(self.lightState == LightStates.ped_green_flashing) and (stateCycleTime > self.stateTime[6]):
 			self.lightState = LightStates.both_red_1
 			self.time = sysTime
-			print('p0')
-			srlPanel.writeSerialData(self, 'p0')
+			self.srlPanel.writeSerialData(self, 'p0')
 		
-		print(stateCycleTime)
-			
-		
-	
+	def resetLights(self):
+		self.srlPanel.writeSerialData(self, 'c0')
+		self.srlPanel.writeSerialData(self, 'p0')
+
 
 class TrafficLightsPanel(tk.LabelFrame):
 	""" This class is designed to control the control area of the app.
