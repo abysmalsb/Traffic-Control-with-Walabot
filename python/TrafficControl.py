@@ -73,7 +73,7 @@ class RawImageApp(tk.Frame):
 		self.trafficPanel.pack(side=tk.TOP, anchor=tk.W, fill=tk.BOTH, pady=10)
 		self.ctrlPanel.pack(side=tk.TOP, anchor=tk.W, fill=tk.BOTH, pady=10)
 		self.wlbt = Walabot()
-		self.trafficLights = TrafficLights(self.srlPanel, int(round(time.time() * 1000)))
+		self.trafficLights = TrafficLights(self.srlPanel)
 
 	def initAppLoop(self):
 		
@@ -134,7 +134,7 @@ class RawImageApp(tk.Frame):
 		
 		
 		#millis = int(round(time.time() * 1000))
-		self.trafficLights.update(int(round(time.time() * 1000)))
+		self.trafficLights.update(int(round(time.time() * 1000)), 1, 1)
 
 class WalabotPanel(tk.LabelFrame):
 
@@ -258,86 +258,187 @@ class WalabotPanel(tk.LabelFrame):
 		self.pMax.set(phiParams[1])
 		self.pRes.set(phiParams[2])
 		self.thld.set(threshold)
-
+		
 	def changeEntriesState(self, state):
 		for param in self.parameters:
 			param.changeState(state)
 			
 			
 class LightStates:
-	both_red_1, car_red_and_yellow, car_green, car_yellow, both_red_2, ped_green, ped_green_flashing = range(7)			
+	all_red, car_red_and_yellow, car_green, car_yellow, both_red_2, ped_green, ped_green_flashing = range(7)			
 			
 			
 class TrafficLights():
 
-	def __init__(self, srlPanel, sysTime):
-		self.lightState = LightStates.both_red_1
-		self.time = sysTime
-		self.stateTime = []
-		self.stateTime.append(500)
-		self.stateTime.append(300)
-		self.stateTime.append(6000)
-		self.stateTime.append(self.stateTime[1])
-		self.stateTime.append(self.stateTime[0])
-		self.stateTime.append(1500)
-		self.stateTime.append(500)
+	def __init__(self, srlPanel):
+		self.lightState = LightStates.all_red
+		self.lastUpdateTime = 0
+		self.stateTimes = []
+		self.stateTimes.append(2000)
+		self.stateTimes.append(2000)
+		self.stateTimes.append(10000)
+		self.stateTimes.append(2000)
+		self.stateTimes.append(2000)
+		self.stateTimes.append(5000)
+		self.stateTimes.append(3000)
 		self.srlPanel = srlPanel
+		self.currentFunction = '__giveCarsGreen__'
 		
-	def get_lightState(self):
-		return self.lightState
 		
 	def setStateTiming(self, stateName, millis):
-		if stateName == LightStates.both_red_1:
-			self.stateTime[0] = millis
+		if stateName == LightStates.all_red:
+			self.stateTimes[0] = millis
 		elif stateName == LightStates.car_red_and_yellow:
-			self.stateTime[1] = millis
+			self.stateTimes[1] = millis
 		elif stateName == LightStates.car_green:
-			self.stateTime[2] = millis
+			self.stateTimes[2] = millis
 		elif stateName == LightStates.car_yellow:
-			self.stateTime[3] = millis
+			self.stateTimes[3] = millis
 		elif stateName == LightStates.both_red_2:
-			self.stateTime[4] = millis
+			self.stateTimes[4] = millis
 		elif stateName == LightStates.ped_green:
-			self.stateTime[5] = millis
+			self.stateTimes[5] = millis
 		elif stateName == LightStates.ped_green_flashing:
-			self.stateTime[6] = millis
+			self.stateTimes[6] = millis
 		
-	def update(self, sysTime):
-		stateCycleTime = sysTime - self.time
-				
-		if(stateCycleTime > self.stateTime[0]) and (self.lightState == LightStates.both_red_1):
-			self.lightState = LightStates.car_red_and_yellow
-			self.time = sysTime
+	def update(self, sysTime, people, vehicles):
+			
+		if vehicles < 0:
+			raise ValueError('You broke the reality! I received negative number of vehicles (', vehicles, ')')
+		elif people < 0:
+			raise ValueError('You broke the reality! I received negative number of people (', people, ')')
+			
+		if vehicles == 0:
+			vehicles = 0.0000000000001
+		if people == 0:
+			people = 0.0000000000001
+			
+		if self.lastUpdateTime == 0:
+			self.lastUpdateTime = sysTime
+			
+		if self.currentFunction == '__giveCarsGreen__':
+			result = self.__giveCarsGreen__(self, sysTime, vehicles / people)
+			if result:
+				self.currentFunction = '__giveCarsRed__'
+		elif self.currentFunction == '__giveCarsRed__':
+			result = self.__giveCarsRed__(self, sysTime)
+			if result:
+				self.currentFunction = '__givePedsGreen__'
+		elif self.currentFunction == '__givePedsGreen__':
+			result = self.__givePedsGreen__(self, sysTime, people / vehicles)
+			if result:
+				self.currentFunction = '__givePedsRed__'
+		elif self.currentFunction == '__givePedsRed__':
+			result = self.__givePedsRed__(self, sysTime)
+			if result:
+				self.currentFunction = '__giveCarsGreen__'
+
+			
+	# as expected, the following give Red/Green functions will only work if you call them in correct order, starting with one of the give green functions
+	#they need to be finished properly	
+	def __giveCarsGreen__(self, master, sysTime, greenMultiplier):
+		finished = False
+		
+		if self.lightState == LightStates.all_red:
+			self.counter = self.stateTimes[1]
+		
+		# without this there could ridiculusly short green periods in some rare cases (0 cars or pedestrians for a very long time) -> providing minimum green time
+		if greenMultiplier < 0.25:
+			greenMultiplier = 0.25
+			
+		if self.lightState == LightStates.car_red_and_yellow or self.lightState == LightStates.all_red:
+			self.counter -= sysTime - self.lastUpdateTime
+		elif self.lightState == LightStates.car_green:
+			self.counter -= (sysTime - self.lastUpdateTime) / greenMultiplier
+		
+		self.lastUpdateTime = sysTime
+		
+		if self.lightState == LightStates.all_red:
 			self.srlPanel.writeSerialData(self, 'c1')
-		elif(self.lightState == LightStates.car_red_and_yellow) and (stateCycleTime > self.stateTime[1]):
-			self.lightState = LightStates.car_green
-			self.time = sysTime
+			self.lightState = LightStates.car_red_and_yellow
+		elif self.lightState == LightStates.car_red_and_yellow and self.counter < 0:
+			self.counter = self.stateTimes[2]
 			self.srlPanel.writeSerialData(self, 'c2')
-		elif(self.lightState == LightStates.car_green) and (stateCycleTime > self.stateTime[2]):
-			self.lightState = LightStates.car_yellow
-			self.time = sysTime
+			self.lightState = LightStates.car_green
+		elif self.lightState == LightStates.car_green and self.counter < 0:
+			finished = True
+			
+		return finished
+	
+	def __giveCarsRed__(self, master, sysTime):
+		finished = False
+		
+		if self.lightState == LightStates.car_green:
+			self.counter = self.stateTimes[3]
+		
+		self.counter -= sysTime - self.lastUpdateTime
+		self.lastUpdateTime = sysTime
+		
+		if self.lightState == LightStates.car_green:
 			self.srlPanel.writeSerialData(self, 'c3')
-		elif(self.lightState == LightStates.car_yellow) and (stateCycleTime > self.stateTime[3]):
-			self.lightState = LightStates.both_red_2
-			self.time = sysTime
+			self.lightState = LightStates.car_yellow
+		elif self.lightState == LightStates.car_yellow and self.counter < 0:
+			self.counter = self.stateTimes[0]
 			self.srlPanel.writeSerialData(self, 'c0')
-		elif(self.lightState == LightStates.both_red_2) and (stateCycleTime > self.stateTime[4]):
-			self.lightState = LightStates.ped_green
-			self.time = sysTime
+			self.lightState = LightStates.all_red
+		elif self.lightState == LightStates.all_red and self.counter < 0:
+			finished = True
+			
+		return finished
+			
+	
+	def __givePedsGreen__(self, master, sysTime, greenMultiplier):
+		finished = False
+		
+		if self.lightState == LightStates.all_red:
+			self.counter = self.stateTimes[5]
+		
+		# without this there could ridiculusly short green periods in some rare cases (0 cars or pedestrians for a very long time) -> providing minimum green time
+		if greenMultiplier < 0.25:
+			greenMultiplier = 0.25
+			
+		self.counter -= (sysTime - self.lastUpdateTime) / greenMultiplier
+		self.lastUpdateTime = sysTime
+		
+		
+		if self.lightState == LightStates.all_red:
 			self.srlPanel.writeSerialData(self, 'p1')
-		elif(self.lightState == LightStates.ped_green) and (stateCycleTime > self.stateTime[5]):
-			self.lightState = LightStates.ped_green_flashing
-			self.time = sysTime
+			self.lightState = LightStates.ped_green
+		elif self.lightState == LightStates.ped_green and self.counter < 0:
+			finished = True
+			
+		return finished
+	
+	
+	def __givePedsRed__(self, master, sysTime):
+		finished = False
+		
+		if self.lightState == LightStates.ped_green:
+			self.counter = self.stateTimes[6]
+		
+		self.counter -= sysTime - self.lastUpdateTime
+		self.lastUpdateTime = sysTime
+		
+		if self.lightState == LightStates.ped_green:
 			self.srlPanel.writeSerialData(self, 'p2')
-		elif(self.lightState == LightStates.ped_green_flashing) and (stateCycleTime > self.stateTime[6]):
-			self.lightState = LightStates.both_red_1
-			self.time = sysTime
+			self.lightState = LightStates.ped_green_flashing
+		elif self.lightState == LightStates.ped_green_flashing and self.counter < 0:
+			self.counter = self.stateTimes[0]
 			self.srlPanel.writeSerialData(self, 'p0')
+			self.lightState = LightStates.all_red
+		elif self.lightState == LightStates.all_red and self.counter < 0:
+			finished = True
+			
+		return finished	
+		
 		
 	def resetLights(self):
 		self.srlPanel.writeSerialData(self, 'c0')
 		self.srlPanel.writeSerialData(self, 'p0')
-
+		self.lightState = LightStates.all_red
+		self.currentFunction = '__giveCarsGreen__'
+		self.lastUpdateTime = 0
+		
 
 class TrafficLightsPanel(tk.LabelFrame):
 	""" This class is designed to control the control area of the app.
