@@ -2,6 +2,8 @@ from __future__ import print_function, division
 import WalabotAPI as wlbt
 import serial	#Import Serial Library
 import time
+import sys
+import glob
 try:  # for Python 2
 	import Tkinter as tk
 except ImportError:  # for Python 3
@@ -79,24 +81,19 @@ class RawImageApp(tk.Frame):
 		
 		try:
 			serialParams = self.srlPanel.getParams()
-			self.srlPanel.mcu = serial.Serial(
-				port=serialParams[0], 
-				baudrate=serialParams[1],
-				parity=serial.PARITY_ODD,
-				stopbits=serial.STOPBITS_TWO,
-				bytesize=serial.SEVENBITS
-			)
+			print(serialParams[0], serialParams[1])
+			self.mcu = SerialController(serialParams[0], serialParams[1])
 
-			self.srlPanel.writeSerialData(self, 's')
+			self.mcu.writeSerialData('s')
 			time.sleep(1)
-			response = self.srlPanel.readSerialData(self)
+			response = self.mcu.readSerialData()
 			
 			if response != 'Ready':
 				self.ctrlPanel.statusVar.set('MCU_NOT_RESPONDING_PROPERLY')
 				return
 				
 			self.ctrlPanel.statusVar.set('MCU_CONNECTED')
-			self.trafficLights.resetLights()
+			self.trafficLights.resetLights(self.mcu)
 		except serial.SerialException:
 			self.ctrlPanel.statusVar.set('MCU_NOT_FOUND')
 			return		
@@ -114,12 +111,13 @@ class RawImageApp(tk.Frame):
 			self.lenOfPhi, self.lenOfR = self.wlbt.getRawImageSliceDimensions()
 			self.canvasPanel.setGrid(self.lenOfPhi, self.lenOfR)
 			self.wlbtPanel.changeEntriesState('disabled')
+			self.srlPanel.changeEntriesState('disabled')
 			self.loop()
 		else:
 			self.ctrlPanel.statusVar.set('WALABOT_DISCONNECTED')
 
 	def loop(self):
-		self.srlPanel.writeSerialData(self, 'd')
+		self.mcu.writeSerialData('d')
 	
 		
 		self.ctrlPanel.statusVar.set('STATUS_SCANNING')
@@ -129,12 +127,12 @@ class RawImageApp(tk.Frame):
 		self.cyclesId = self.after_idle(self.loop)
 		
 		
-		response = self.srlPanel.readSerialData(self)
+		response = self.mcu.readSerialData()
 		self.trafficPanel.carVar.set(response)
 		
 		
 		#millis = int(round(time.time() * 1000))
-		self.trafficLights.update(int(round(time.time() * 1000)), 1, 1)
+		self.trafficLights.update(self.mcu, int(round(time.time() * 1000)), 1, 1)
 
 class WalabotPanel(tk.LabelFrame):
 
@@ -301,7 +299,7 @@ class TrafficLights():
 		elif stateName == LightStates.ped_green_flashing:
 			self.stateTimes[6] = millis
 		
-	def update(self, sysTime, people, vehicles):
+	def update(self, mcu, sysTime, people, vehicles):
 			
 		if vehicles < 0:
 			raise ValueError('You broke the reality! I received negative number of vehicles (', vehicles, ')')
@@ -317,26 +315,26 @@ class TrafficLights():
 			self.lastUpdateTime = sysTime
 			
 		if self.currentFunction == '__giveCarsGreen__':
-			result = self.__giveCarsGreen__(self, sysTime, vehicles / people)
+			result = self.__giveCarsGreen__(self, mcu, sysTime, vehicles / people)
 			if result:
 				self.currentFunction = '__giveCarsRed__'
 		elif self.currentFunction == '__giveCarsRed__':
-			result = self.__giveCarsRed__(self, sysTime)
+			result = self.__giveCarsRed__(self, mcu, sysTime)
 			if result:
 				self.currentFunction = '__givePedsGreen__'
 		elif self.currentFunction == '__givePedsGreen__':
-			result = self.__givePedsGreen__(self, sysTime, people / vehicles)
+			result = self.__givePedsGreen__(self, mcu, sysTime, people / vehicles)
 			if result:
 				self.currentFunction = '__givePedsRed__'
 		elif self.currentFunction == '__givePedsRed__':
-			result = self.__givePedsRed__(self, sysTime)
+			result = self.__givePedsRed__(self, mcu, sysTime)
 			if result:
 				self.currentFunction = '__giveCarsGreen__'
 
 			
 	# as expected, the following give Red/Green functions will only work if you call them in correct order, starting with one of the give green functions
 	#they need to be finished properly	
-	def __giveCarsGreen__(self, master, sysTime, greenMultiplier):
+	def __giveCarsGreen__(self, master, mcu, sysTime, greenMultiplier):
 		finished = False
 		
 		if self.lightState == LightStates.all_red:
@@ -354,18 +352,18 @@ class TrafficLights():
 		self.lastUpdateTime = sysTime
 		
 		if self.lightState == LightStates.all_red:
-			self.srlPanel.writeSerialData(self, 'c1')
+			mcu.writeSerialData('c1')
 			self.lightState = LightStates.car_red_and_yellow
 		elif self.lightState == LightStates.car_red_and_yellow and self.counter < 0:
 			self.counter = self.stateTimes[2]
-			self.srlPanel.writeSerialData(self, 'c2')
+			mcu.writeSerialData('c2')
 			self.lightState = LightStates.car_green
 		elif self.lightState == LightStates.car_green and self.counter < 0:
 			finished = True
 			
 		return finished
 	
-	def __giveCarsRed__(self, master, sysTime):
+	def __giveCarsRed__(self, master, mcu, sysTime):
 		finished = False
 		
 		if self.lightState == LightStates.car_green:
@@ -375,11 +373,11 @@ class TrafficLights():
 		self.lastUpdateTime = sysTime
 		
 		if self.lightState == LightStates.car_green:
-			self.srlPanel.writeSerialData(self, 'c3')
+			mcu.writeSerialData('c3')
 			self.lightState = LightStates.car_yellow
 		elif self.lightState == LightStates.car_yellow and self.counter < 0:
 			self.counter = self.stateTimes[0]
-			self.srlPanel.writeSerialData(self, 'c0')
+			mcu.writeSerialData('c0')
 			self.lightState = LightStates.all_red
 		elif self.lightState == LightStates.all_red and self.counter < 0:
 			finished = True
@@ -387,7 +385,7 @@ class TrafficLights():
 		return finished
 			
 	
-	def __givePedsGreen__(self, master, sysTime, greenMultiplier):
+	def __givePedsGreen__(self, master, mcu, sysTime, greenMultiplier):
 		finished = False
 		
 		if self.lightState == LightStates.all_red:
@@ -402,7 +400,7 @@ class TrafficLights():
 		
 		
 		if self.lightState == LightStates.all_red:
-			self.srlPanel.writeSerialData(self, 'p1')
+			mcu.writeSerialData('p1')
 			self.lightState = LightStates.ped_green
 		elif self.lightState == LightStates.ped_green and self.counter < 0:
 			finished = True
@@ -410,7 +408,7 @@ class TrafficLights():
 		return finished
 	
 	
-	def __givePedsRed__(self, master, sysTime):
+	def __givePedsRed__(self, master, mcu, sysTime):
 		finished = False
 		
 		if self.lightState == LightStates.ped_green:
@@ -420,11 +418,11 @@ class TrafficLights():
 		self.lastUpdateTime = sysTime
 		
 		if self.lightState == LightStates.ped_green:
-			self.srlPanel.writeSerialData(self, 'p2')
+			mcu.writeSerialData('p2')
 			self.lightState = LightStates.ped_green_flashing
 		elif self.lightState == LightStates.ped_green_flashing and self.counter < 0:
 			self.counter = self.stateTimes[0]
-			self.srlPanel.writeSerialData(self, 'p0')
+			mcu.writeSerialData('p0')
 			self.lightState = LightStates.all_red
 		elif self.lightState == LightStates.all_red and self.counter < 0:
 			finished = True
@@ -432,13 +430,12 @@ class TrafficLights():
 		return finished	
 		
 		
-	def resetLights(self):
-		self.srlPanel.writeSerialData(self, 'c0')
-		self.srlPanel.writeSerialData(self, 'p0')
+	def resetLights(self, mcu):
+		mcu.writeSerialData('c0')
+		mcu.writeSerialData('p0')
 		self.lightState = LightStates.all_red
 		self.currentFunction = '__giveCarsGreen__'
 		self.lastUpdateTime = 0
-		
 
 class TrafficLightsPanel(tk.LabelFrame):
 	""" This class is designed to control the control area of the app.
@@ -472,7 +469,40 @@ class TrafficLightsPanel(tk.LabelFrame):
 		tk.Label(frame, text=(varText).ljust(12)).grid(row=0, column=0)
 		tk.Label(frame, textvariable=strVar).grid(row=0, column=1)
 		return strVar
-
+		
+		
+class SerialController:
+	
+	def __init__(self, port, baud):
+		self.openSerial(port, baud)
+		
+	def getPortBaudRate(self):
+		return self.port, self.baud
+		
+	def writeSerialData(self, data):
+		self.serial.write((data + '\r\n').encode())
+		
+	def readSerialData(self):
+		data = ''
+		while self.serial.inWaiting() > 0:
+			data += self.serial.read(1).decode("utf-8")
+			
+		return data.rstrip("\r").strip()
+	
+	def openSerial(self, port, baud):	
+		self.port = port
+		self.baud = baud
+		self.serial = serial.Serial(
+			port=port, 
+			baudrate=baud,
+			parity=serial.PARITY_ODD,
+			stopbits=serial.STOPBITS_TWO,
+			bytesize=serial.SEVENBITS
+		)
+	
+	def closeSerial(self):
+		self.serial.close()
+	
 
 class SerialPanel(tk.LabelFrame):
 
@@ -504,34 +534,77 @@ class SerialPanel(tk.LabelFrame):
 			""" Change the entry state according to a given one.
 			"""
 			self.entry.configure(state=state)
-			
+		
+
+	class MenuParameter(tk.Frame):
+
+		def __init__(self, master, text, options):
+			""" 
+			"""
+			tk.Frame.__init__(self, master)
+			tk.Label(self, text=text).pack(side=tk.LEFT, padx=(0, 42), pady=1)
+			self.var = tk.StringVar()
+			self.var.set(options[0])
+			self.optionsMenu = tk.OptionMenu(self, self.var, *options)
+			self.optionsMenu.pack(side=tk.LEFT)
+			self.optionsMenu.config(width=5)
+			tk.Label(self, text="").pack(side=tk.LEFT, padx=(5, 20), pady=1)
+
+		def get(self):
+			""" Returns the entry value as a float.
+			"""
+			return self.var.get()
+
+		def set(self, value):
+			""" Sets the entry value according to a given one.
+			"""
+			self.var.set(value)
+
+		def changeState(self, state):
+			""" Change the entry state according to a given one.
+			"""
+			self.optionsMenu.configure(state=state)		
 
 	def __init__(self, master):
 		tk.LabelFrame.__init__(self, master, text='Serial Configuration')
-		self.port = self.SerialParameter(self, 'MCU COM Port	', 'COM7')
+		ports = self.getPorts(self)
+		self.port = self.MenuParameter(self, 'Select port', ports)
 		self.baud = self.SerialParameter(self, 'Baud		', '115200')
+		
 		self.parameters = (
 			self.port, self.baud)
 		for param in self.parameters:
 			param.pack(anchor=tk.W)
+			
 
 	def getParams(self):
 		port, baud, = self.port.get(), self.baud.get()
 		return port, baud
+		
+	def getPorts(self, master):
+		if sys.platform.startswith('win'):
+			ports = ['COM%s' % (i + 1) for i in range(256)]
+		elif sys.platform.startswith('linux') or sys.platform.startswith('cygwin'):
+			# this excludes your current terminal "/dev/tty"
+			ports = glob.glob('/dev/tty[A-Za-z]*')
+		elif sys.platform.startswith('darwin'):
+			ports = glob.glob('/dev/tty.*')
+		else:
+			raise EnvironmentError('Unsupported platform')
+
+		result = []
+		for currentPort in ports:
+			try:
+				s = serial.Serial(port=currentPort, baudrate=115200)
+				s.close()
+				result.append(currentPort)
+			except (OSError, serial.SerialException):
+				pass
+		return result
 
 	def setParams(self, port, baud):
 		self.port.set(port)
 		self.baud.set(baud)
-
-	def writeSerialData(self, master, data):
-		self.mcu.write((data + '\r\n').encode())
-		
-	def readSerialData(self, master):
-		data = ''
-		while self.mcu.inWaiting() > 0:
-			data += self.mcu.read(1).decode("utf-8")
-			
-		return data.rstrip("\r").strip()
 
 	def changeEntriesState(self, state):
 		for param in self.parameters:
@@ -590,11 +663,11 @@ class ControlPanel(tk.LabelFrame):
 		if hasattr(self.master, 'cyclesId'):
 			self.master.after_cancel(self.master.cyclesId)
 			self.master.wlbtPanel.changeEntriesState('normal')
+			self.master.srlPanel.changeEntriesState('normal')
 			self.master.canvasPanel.reset()
 			self.statusVar.set('STATUS_IDLE')
 			
-		if self.master.srlPanel.mcu.is_open:
-			self.master.srlPanel.mcu.close()
+		master.mcu.closeSerial
 
 
 class CanvasPanel(tk.LabelFrame):
