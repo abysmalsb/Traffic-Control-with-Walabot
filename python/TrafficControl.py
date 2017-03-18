@@ -81,7 +81,6 @@ class RawImageApp(tk.Frame):
 		
 		try:
 			serialParams = self.srlPanel.getParams()
-			print(serialParams[0], serialParams[1])
 			self.mcu = SerialController(serialParams[0], serialParams[1])
 
 			self.mcu.writeSerialData('s')
@@ -93,7 +92,7 @@ class RawImageApp(tk.Frame):
 				return
 				
 			self.ctrlPanel.statusVar.set('MCU_CONNECTED')
-			self.trafficLights.resetLights(self.mcu)
+			self.trafficLights.resetLights(self, self.mcu)
 		except serial.SerialException:
 			self.ctrlPanel.statusVar.set('MCU_NOT_FOUND')
 			return		
@@ -132,7 +131,7 @@ class RawImageApp(tk.Frame):
 		
 		
 		#millis = int(round(time.time() * 1000))
-		self.trafficLights.update(self.mcu, int(round(time.time() * 1000)), 1, 1)
+		self.trafficLights.update(self, self.mcu, int(round(time.time() * 1000)), 1, 1)
 
 class WalabotPanel(tk.LabelFrame):
 
@@ -299,7 +298,7 @@ class TrafficLights():
 		elif stateName == LightStates.ped_green_flashing:
 			self.stateTimes[6] = millis
 		
-	def update(self, mcu, sysTime, people, vehicles):
+	def update(self, window, mcu, sysTime, people, vehicles):
 			
 		if vehicles < 0:
 			raise ValueError('You broke the reality! I received negative number of vehicles (', vehicles, ')')
@@ -315,26 +314,26 @@ class TrafficLights():
 			self.lastUpdateTime = sysTime
 			
 		if self.currentFunction == '__giveCarsGreen__':
-			result = self.__giveCarsGreen__(self, mcu, sysTime, vehicles / people)
+			result = self.__giveCarsGreen__(self, window, mcu, sysTime, vehicles / people)
 			if result:
 				self.currentFunction = '__giveCarsRed__'
 		elif self.currentFunction == '__giveCarsRed__':
-			result = self.__giveCarsRed__(self, mcu, sysTime)
+			result = self.__giveCarsRed__(self, window, mcu, sysTime)
 			if result:
 				self.currentFunction = '__givePedsGreen__'
 		elif self.currentFunction == '__givePedsGreen__':
-			result = self.__givePedsGreen__(self, mcu, sysTime, people / vehicles)
+			result = self.__givePedsGreen__(self, window, mcu, sysTime, people / vehicles)
 			if result:
 				self.currentFunction = '__givePedsRed__'
 		elif self.currentFunction == '__givePedsRed__':
-			result = self.__givePedsRed__(self, mcu, sysTime)
+			result = self.__givePedsRed__(self, window, mcu, sysTime)
 			if result:
 				self.currentFunction = '__giveCarsGreen__'
 
 			
 	# as expected, the following give Red/Green functions will only work if you call them in correct order, starting with one of the give green functions
 	#they need to be finished properly	
-	def __giveCarsGreen__(self, master, mcu, sysTime, greenMultiplier):
+	def __giveCarsGreen__(self, master, window, mcu, sysTime, greenMultiplier):
 		finished = False
 		
 		if self.lightState == LightStates.all_red:
@@ -353,17 +352,20 @@ class TrafficLights():
 		
 		if self.lightState == LightStates.all_red:
 			mcu.writeSerialData('c1')
+			window.trafficPanel.carLightVar.set('RED+YELLOW')
 			self.lightState = LightStates.car_red_and_yellow
 		elif self.lightState == LightStates.car_red_and_yellow and self.counter < 0:
 			self.counter = self.stateTimes[2]
 			mcu.writeSerialData('c2')
+			window.trafficPanel.carLightVar.set('GREEN')
 			self.lightState = LightStates.car_green
 		elif self.lightState == LightStates.car_green and self.counter < 0:
 			finished = True
 			
+			
 		return finished
 	
-	def __giveCarsRed__(self, master, mcu, sysTime):
+	def __giveCarsRed__(self, master, window, mcu, sysTime):
 		finished = False
 		
 		if self.lightState == LightStates.car_green:
@@ -374,10 +376,12 @@ class TrafficLights():
 		
 		if self.lightState == LightStates.car_green:
 			mcu.writeSerialData('c3')
+			window.trafficPanel.carLightVar.set('YELLOW')
 			self.lightState = LightStates.car_yellow
 		elif self.lightState == LightStates.car_yellow and self.counter < 0:
 			self.counter = self.stateTimes[0]
 			mcu.writeSerialData('c0')
+			window.trafficPanel.carLightVar.set('RED')
 			self.lightState = LightStates.all_red
 		elif self.lightState == LightStates.all_red and self.counter < 0:
 			finished = True
@@ -385,7 +389,7 @@ class TrafficLights():
 		return finished
 			
 	
-	def __givePedsGreen__(self, master, mcu, sysTime, greenMultiplier):
+	def __givePedsGreen__(self, master, window, mcu, sysTime, greenMultiplier):
 		finished = False
 		
 		if self.lightState == LightStates.all_red:
@@ -401,6 +405,7 @@ class TrafficLights():
 		
 		if self.lightState == LightStates.all_red:
 			mcu.writeSerialData('p1')
+			window.trafficPanel.pedestriansLightVar.set('GREEN')
 			self.lightState = LightStates.ped_green
 		elif self.lightState == LightStates.ped_green and self.counter < 0:
 			finished = True
@@ -408,7 +413,7 @@ class TrafficLights():
 		return finished
 	
 	
-	def __givePedsRed__(self, master, mcu, sysTime):
+	def __givePedsRed__(self, master, window, mcu, sysTime):
 		finished = False
 		
 		if self.lightState == LightStates.ped_green:
@@ -419,23 +424,27 @@ class TrafficLights():
 		
 		if self.lightState == LightStates.ped_green:
 			mcu.writeSerialData('p2')
+			window.trafficPanel.pedestriansLightVar.set('G. FLASHING')
 			self.lightState = LightStates.ped_green_flashing
 		elif self.lightState == LightStates.ped_green_flashing and self.counter < 0:
 			self.counter = self.stateTimes[0]
 			mcu.writeSerialData('p0')
+			window.trafficPanel.pedestriansLightVar.set('RED')
 			self.lightState = LightStates.all_red
 		elif self.lightState == LightStates.all_red and self.counter < 0:
 			finished = True
-			
+		
 		return finished	
 		
 		
-	def resetLights(self, mcu):
+	def resetLights(self, window, mcu):
 		mcu.writeSerialData('c0')
 		mcu.writeSerialData('p0')
 		self.lightState = LightStates.all_red
 		self.currentFunction = '__giveCarsGreen__'
 		self.lastUpdateTime = 0
+		window.trafficPanel.carLightVar.set('RED')
+		window.trafficPanel.pedestriansLightVar.set('RED')
 
 class TrafficLightsPanel(tk.LabelFrame):
 	""" This class is designed to control the control area of the app.
@@ -449,15 +458,12 @@ class TrafficLightsPanel(tk.LabelFrame):
 		self.pedestrianVar = self.setVar(self.pedestrianFrame, 'Pedestrians:', 'N/A')
 		self.carFrame = tk.Frame(self)
 		self.carVar = self.setVar(self.carFrame, 'Vehicles:', 'N/A')
-		self.countDownFrame = tk.Frame(self)
-		self.countDownVar = self.setVar(self.countDownFrame, 'Counting down:', 'N/A')
 		self.pedestriansLightFrame = tk.Frame(self)
-		self.pedestriansLightVar = self.setVar(self.pedestriansLightFrame, 'Pedestrians\' traffic lights:', 'N/A')
+		self.pedestriansLightVar = self.setVar(self.pedestriansLightFrame, 'Ped.\'s traffic lights:', 'N/A')
 		self.carLightFrame = tk.Frame(self)
 		self.carLightVar = self.setVar(self.carLightFrame, 'Vehicles\' traffic lights:', 'N/A')
 		self.pedestrianFrame.grid(row=1, columnspan=2, sticky=tk.W)
 		self.carFrame.grid(row=2, columnspan=2, sticky=tk.W)
-		self.countDownFrame.grid(row=3, columnspan=2, sticky=tk.W)
 		self.pedestriansLightFrame.grid(row=4, columnspan=2, sticky=tk.W)
 		self.carLightFrame.grid(row=5, columnspan=2, sticky=tk.W)
 
@@ -667,7 +673,12 @@ class ControlPanel(tk.LabelFrame):
 			self.master.canvasPanel.reset()
 			self.statusVar.set('STATUS_IDLE')
 			
-		master.mcu.closeSerial
+		self.master.mcu.closeSerial()
+		
+		self.master.trafficPanel.pedestrianVar.set('N/A')
+		self.master.trafficPanel.carVar.set('N/A')
+		self.master.trafficPanel.pedestriansLightVar.set('N/A')
+		self.master.trafficPanel.carLightVar.set('N/A')
 
 
 class CanvasPanel(tk.LabelFrame):
