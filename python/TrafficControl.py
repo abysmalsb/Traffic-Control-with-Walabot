@@ -4,14 +4,9 @@ import serial	#Import Serial Library
 import time
 import sys
 import glob
-try:  # for Python 2
-	import Tkinter as tk
-except ImportError:  # for Python 3
-	import tkinter as tk
-try:  # for Python 2
-	range = xrange
-except NameError:
-	pass
+import copy
+import threading
+import tkinter as tk
 
 COLORS = [
 	"000083", "000087", "00008B", "00008F", "000093", "000097", "00009B",
@@ -51,10 +46,10 @@ COLORS = [
 	"C30000", "BF0000", "BB0000", "B70000", "B30000", "AF0000", "AB0000",
 	"A70000", "A30000", "9F0000", "9B0000", "970000", "930000", "8F0000",
 	"8B0000", "870000", "830000", "7F0000"]
+	
 
 APP_X, APP_Y = 50, 50  # location of top-left corner of window
 CANVAS_LENGTH = 650  # in pixels
-
 
 class RawImageApp(tk.Frame):
 	""" Main app class.
@@ -76,12 +71,14 @@ class RawImageApp(tk.Frame):
 		self.ctrlPanel.pack(side=tk.TOP, anchor=tk.W, fill=tk.BOTH, pady=10)
 		self.wlbt = Walabot()
 		self.trafficLights = TrafficLights(self.srlPanel)
+		self.isRunning = False
+		self.threadId = 1
 
 	def initAppLoop(self):
 		
 		try:
 			serialParams = self.srlPanel.getParams()
-			self.mcu = SerialController(serialParams[0], serialParams[1])
+			self.mcu = SerialController(*serialParams)
 
 			self.mcu.writeSerialData('s')
 			time.sleep(1)
@@ -97,6 +94,10 @@ class RawImageApp(tk.Frame):
 			self.ctrlPanel.statusVar.set('MCU_NOT_FOUND')
 			return		
 	
+		self.isRunning = True
+		self.serialUpdaterThread = SerialUpdaterThread(self.threadId, 'SerialUpdaterThread', self);
+		self.threadId += 1
+		
 		if self.wlbt.isConnected():
 			self.ctrlPanel.statusVar.set('WALABOT_CONNECTED')
 			self.update_idletasks()
@@ -111,27 +112,55 @@ class RawImageApp(tk.Frame):
 			self.canvasPanel.setGrid(self.lenOfPhi, self.lenOfR)
 			self.wlbtPanel.changeEntriesState('disabled')
 			self.srlPanel.changeEntriesState('disabled')
+			self.ctrlPanel.statusVar.set('STATUS_SCANNING')
 			self.loop()
 		else:
 			self.ctrlPanel.statusVar.set('WALABOT_DISCONNECTED')
+			
+		
 
 	def loop(self):
-		self.mcu.writeSerialData('d')
-	
+				
+		self.trafficLights.update(self, self.mcu, int(round(time.time() * 1000)), 1, 1)
 		
-		self.ctrlPanel.statusVar.set('STATUS_SCANNING')
+		
+		if not self.serialUpdaterThread.isAlive():
+			self.serialUpdaterThread.start()
+						
 		rawImage = self.wlbt.triggerAndGetRawImageSlice()
 		self.canvasPanel.update(rawImage, self.lenOfPhi, self.lenOfR)
 		self.ctrlPanel.fpsVar.set(self.wlbt.getFps())
+			
+			
 		self.cyclesId = self.after_idle(self.loop)
 		
+	def stopRunning(self):
 		
-		response = self.mcu.readSerialData()
-		self.trafficPanel.carVar.set(response)
+		self.isRunning = False
+		time.sleep(1)
+		self.mcu.closeSerial()
 		
 		
-		#millis = int(round(time.time() * 1000))
-		self.trafficLights.update(self, self.mcu, int(round(time.time() * 1000)), 1, 1)
+		
+class SerialUpdaterThread(threading.Thread):	
+
+	def __init__(self, threadID, name, app):
+		threading.Thread.__init__(self)
+		self.threadID = threadID
+		self.name = name
+		self.label = app.trafficPanel.carVar
+		self.mcu = app.mcu
+		self.app = app
+		self.daemon = True
+		
+	def run(self):
+		while self.app.isRunning:
+			self.mcu.writeSerialData('d')
+			time.sleep(0.01)
+			result = self.mcu.readSerialData()
+			self.label.set(result)
+			time.sleep(1)
+
 
 class WalabotPanel(tk.LabelFrame):
 
@@ -424,7 +453,7 @@ class TrafficLights():
 		
 		if self.lightState == LightStates.ped_green:
 			mcu.writeSerialData('p2')
-			window.trafficPanel.pedestriansLightVar.set('G. FLASHING')
+			window.trafficPanel.pedestriansLightVar.set('GREEN FLASHING')
 			self.lightState = LightStates.ped_green_flashing
 		elif self.lightState == LightStates.ped_green_flashing and self.counter < 0:
 			self.counter = self.stateTimes[0]
@@ -627,7 +656,7 @@ class ControlPanel(tk.LabelFrame):
 		self.buttonsFrame = tk.Frame(self)
 		self.runButton, self.stopButton = self.setButtons(self.buttonsFrame)
 		self.statusFrame = tk.Frame(self)
-		self.statusVar = self.setVar(self.statusFrame, 'APP_STATUS', '')
+		self.statusVar = self.setVar(self.statusFrame, 'STATUS', '')
 		self.errorFrame = tk.Frame(self)
 		self.errorVar = self.setVar(self.errorFrame, 'EXCEPTION', '')
 		self.fpsFrame = tk.Frame(self)
@@ -666,6 +695,7 @@ class ControlPanel(tk.LabelFrame):
 		""" Applied when 'Stop' button in pressed. Stops the Walabot and the
 			app cycles.
 		"""
+		
 		if hasattr(self.master, 'cyclesId'):
 			self.master.after_cancel(self.master.cyclesId)
 			self.master.wlbtPanel.changeEntriesState('normal')
@@ -673,12 +703,13 @@ class ControlPanel(tk.LabelFrame):
 			self.master.canvasPanel.reset()
 			self.statusVar.set('STATUS_IDLE')
 			
-		self.master.mcu.closeSerial()
-		
 		self.master.trafficPanel.pedestrianVar.set('N/A')
 		self.master.trafficPanel.carVar.set('N/A')
 		self.master.trafficPanel.pedestriansLightVar.set('N/A')
 		self.master.trafficPanel.carLightVar.set('N/A')
+		
+		self.master.stopRunning()
+		
 
 
 class CanvasPanel(tk.LabelFrame):
@@ -716,6 +747,7 @@ class CanvasPanel(tk.LabelFrame):
 				lenOfPhi	Number of cells in Phi axis.
 				lenOfR	  Number of cells in R axis.
 		"""
+		rawImage = showPeaks(rawImage, lenOfPhi, lenOfR, 15)
 		for i in range(lenOfPhi):
 			for j in range(lenOfR):
 				self.canvas.itemconfigure(
@@ -726,6 +758,7 @@ class CanvasPanel(tk.LabelFrame):
 		""" Deletes all the canvas components (colored rectangles).
 		"""
 		self.canvas.delete('all')
+		
 
 
 class Walabot:
@@ -805,7 +838,101 @@ class Walabot:
 		"""
 		return int(self.wlbt.GetAdvancedParameter('FrameRate'))
 
+	
+class Point:
+	def __init__(self, x, y):
+		self.x = x
+		self.y = y
+		
+	def getCoordinates(self):
+		return self.x, self.y
+	
+		
+def showPeaks(rawImage, lenOfPhi, lenOfR, threshold):
+	copiedImage = copy.deepcopy(rawImage)
+	peaks = getPeaks(rawImage, lenOfPhi, lenOfR, threshold)
+	
+	print(len(peaks))
+	for peak in peaks:
+		x, y = peak.getCoordinates()
+		rawImage[x][y] = 255
+	
+	return rawImage
+	
+def getPeaks(rawImage, lenOfPhi, lenOfR, threshold):
 
+	if not 'peakCoordinates' in locals():
+		peakCoordinates = set()
+
+	maxValue = - 1
+
+	for i in range(lenOfPhi):
+		previousValue = rawImage[i][0]
+		for j in range(lenOfR):
+			if rawImage[i][j] > maxValue:
+				maxI = i
+				maxJ = j
+				maxValue = rawImage[i][j]
+	
+	if(maxValue > threshold):
+		peakCoordinates.add(Point(maxI, maxJ))
+		rawImage = removePeak(rawImage, maxI, maxJ, lenOfPhi, lenOfR, threshold)
+		showPeaks(rawImage, lenOfPhi, lenOfR, threshold)
+	
+	return peakCoordinates
+	
+def removePeak(rawImage, i, j, lenOfPhi, lenOfR, threshold):
+
+	checked = [[False for x in range(lenOfPhi)] for y in range(lenOfR)] 
+	checked = removePeakStepByStep(rawImage, checked, i, j, lenOfPhi, lenOfR, threshold)
+	
+	for i in range(lenOfPhi):
+		for j in range(lenOfR):
+			if checked[i][j]:
+				rawImage[i][j] = 0
+				
+	return rawImage
+	
+def removePeakStepByStep(rawImage, checked, i, j, lenOfPhi, lenOfR, threshold):
+	
+	checked[i][j] = True
+		
+	if (i - 1 >= 0 and j - 1 >= 0 and not checked[i-1][j-1] and rawImage[i-1][j-1] <= rawImage[i][j]  and rawImage[i-1][j-1] >= threshold):
+		checked = removePeakStepByStep(rawImage, checked, i - 1, j - 1, lenOfPhi, lenOfR, threshold)
+	if (i - 1 >= 0 and not checked[i-1][j] and rawImage[i-1][j] <= rawImage[i][j] and rawImage[i-1][j] >= threshold):
+		checked = removePeakStepByStep(rawImage, checked, i - 1, j, lenOfPhi, lenOfR, threshold)
+	if (i - 1 >= 0 and j + 1 < lenOfR and not checked[i-1][j+1] and rawImage[i-1][j+1] <= rawImage[i][j] and rawImage[i-1][j+1] >= threshold):
+		checked = removePeakStepByStep(rawImage, checked, i - 1, j + 1, lenOfPhi, lenOfR, threshold)
+	if (j - 1 >= 0 and not checked[i][j-1] and rawImage[i][j-1] <= rawImage[i][j] and rawImage[i][j-1] >= threshold):
+		checked = removePeakStepByStep(rawImage, checked, i, j - 1, lenOfPhi, lenOfR, threshold)
+	if (j + 1 < lenOfR and not checked[i][j+1] and rawImage[i][j+1] <= rawImage[i][j] and rawImage[i][j+1] >= threshold):
+		checked = removePeakStepByStep(rawImage, checked, i, j + 1, lenOfPhi, lenOfR, threshold)
+	if (i + 1 < lenOfPhi and j - 1 >= 0 and not checked[i+1][j-1] and rawImage[i+1][j-1] <= rawImage[i][j] and rawImage[i+1][j-1] >= threshold):
+		checked = removePeakStepByStep(rawImage, checked, i + 1, j - 1, lenOfPhi, lenOfR, threshold)
+	if (i + 1 < lenOfPhi and not checked[i+1][j] and rawImage[i+1][j] <= rawImage[i][j] and rawImage[i+1][j] >= threshold):
+		checked = removePeakStepByStep(rawImage, checked, i + 1, j, lenOfPhi, lenOfR, threshold)
+	if (i + 1 < lenOfPhi and j + 1 < lenOfR and not checked[i+1][j+1] and rawImage[i+1][j+1] <= rawImage[i][j] and rawImage[i+1][j+1] >= threshold):
+		checked = removePeakStepByStep(rawImage, checked, +i + 1, j + 1, lenOfPhi, lenOfR, threshold)
+		
+	return checked
+
+def isLocalPeak(rawImage, i, j, lenOfPhi, lenOfR):
+	
+	if (i - 1 >= 0 and j - 1 >= 0 and rawImage[i-1][j-1] >= rawImage[i][j])\
+		or (i - 1 >= 0 and rawImage[i-1][j] >= rawImage[i][j])\
+		or (i - 1 >= 0 and j + 1 < lenOfR and rawImage[i-1][j+1] >= rawImage[i][j])\
+		or (j - 1 >= 0 and rawImage[i][j-1] >= rawImage[i][j])\
+		or (j + 1 < lenOfR and rawImage[i][j+1] >= rawImage[i][j])\
+		or (i + 1 < lenOfPhi and j - 1 >= 0 and rawImage[i-1][j-1] >= rawImage[i][j])\
+		or (i + 1 < lenOfPhi and rawImage[i-1][j] >= rawImage[i][j])\
+		or (i + 1 < lenOfPhi and j + 1 < lenOfR and rawImage[i-1][j+1] >= rawImage[i][j]):
+			return False
+	else:
+		return True
+	
+	
+	
+	
 def rawImage():
 	""" Main app function. Init the main app class, configure the window
 		and start the mainloop.
