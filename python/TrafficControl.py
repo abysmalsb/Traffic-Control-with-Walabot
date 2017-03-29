@@ -45,7 +45,7 @@ COLORS = [
 	"DF0000", "DB0000", "D70000", "D30000", "CF0000", "CB0000", "C70000",
 	"C30000", "BF0000", "BB0000", "B70000", "B30000", "AF0000", "AB0000",
 	"A70000", "A30000", "9F0000", "9B0000", "970000", "930000", "8F0000",
-	"8B0000", "870000", "830000", "7F0000"]
+	"8B0000", "870000", "830000", "7F0000", "FFFFFF"]
 	
 
 APP_X, APP_Y = 50, 50  # location of top-left corner of window
@@ -747,12 +747,14 @@ class CanvasPanel(tk.LabelFrame):
 				lenOfPhi	Number of cells in Phi axis.
 				lenOfR	  Number of cells in R axis.
 		"""
-		rawImage = showPeaks(rawImage, lenOfPhi, lenOfR, 15)
+		rawImage, pedestrians = showPeaks(rawImage, lenOfPhi, lenOfR, 15)
 		for i in range(lenOfPhi):
 			for j in range(lenOfR):
 				self.canvas.itemconfigure(
 					self.cells[lenOfPhi-i-1][j],
 					fill='#'+COLORS[rawImage[i][j]])
+					
+		
 
 	def reset(self):
 		""" Deletes all the canvas components (colored rectangles).
@@ -847,22 +849,18 @@ class Point:
 	def getCoordinates(self):
 		return self.x, self.y
 	
-		
+	
 def showPeaks(rawImage, lenOfPhi, lenOfR, threshold):
 	copiedImage = copy.deepcopy(rawImage)
-	peaks = getPeaks(rawImage, lenOfPhi, lenOfR, threshold)
+	peaks = getPeaks(rawImage, lenOfPhi, lenOfR, threshold, set())
 	
-	print(len(peaks))
 	for peak in peaks:
 		x, y = peak.getCoordinates()
-		rawImage[x][y] = 255
+		copiedImage[x][y] = 256
 	
-	return rawImage
+	return copiedImage, len(peaks)
 	
-def getPeaks(rawImage, lenOfPhi, lenOfR, threshold):
-
-	if not 'peakCoordinates' in locals():
-		peakCoordinates = set()
+def getPeaks(rawImage, lenOfPhi, lenOfR, threshold, peakCoordinates):
 
 	maxValue = - 1
 
@@ -877,7 +875,7 @@ def getPeaks(rawImage, lenOfPhi, lenOfR, threshold):
 	if(maxValue > threshold):
 		peakCoordinates.add(Point(maxI, maxJ))
 		rawImage = removePeak(rawImage, maxI, maxJ, lenOfPhi, lenOfR, threshold)
-		showPeaks(rawImage, lenOfPhi, lenOfR, threshold)
+		peakCoordinates = getPeaks(rawImage, lenOfPhi, lenOfR, threshold, peakCoordinates)
 	
 	return peakCoordinates
 	
