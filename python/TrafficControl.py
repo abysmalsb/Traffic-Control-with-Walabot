@@ -128,7 +128,7 @@ class RawImageApp(tk.Frame):
 			self.serialUpdaterThread.start()
 						
 		rawImage = self.wlbt.triggerAndGetRawImageSlice()
-		self.canvasPanel.update(rawImage, self.lenOfPhi, self.lenOfR)
+		self.canvasPanel.update(rawImage, self.lenOfPhi, self.lenOfR, self.trafficPanel.pedestrianVar)
 		self.ctrlPanel.fpsVar.set(self.wlbt.getFps())
 			
 			
@@ -724,6 +724,7 @@ class CanvasPanel(tk.LabelFrame):
 			self, width=CANVAS_LENGTH, height=CANVAS_LENGTH)
 		self.canvas.pack()
 		self.canvas.configure(background='#'+COLORS[0])
+		self.imageProcessor = ImageProcessing()
 
 	def setGrid(self, sizeX, sizeY):
 		""" Set the canvas components (rectangles), given the size of the axes.
@@ -739,7 +740,7 @@ class CanvasPanel(tk.LabelFrame):
 				width=0)
 			for col in range(sizeY)] for row in range(sizeX)]
 
-	def update(self, rawImage, lenOfPhi, lenOfR):
+	def update(self, rawImage, lenOfPhi, lenOfR, pedVar):
 		""" Updates the canvas cells colors acorrding to a given rawImage
 			matrix and it's dimensions.
 			Arguments:
@@ -747,14 +748,14 @@ class CanvasPanel(tk.LabelFrame):
 				lenOfPhi	Number of cells in Phi axis.
 				lenOfR	  Number of cells in R axis.
 		"""
-		rawImage, pedestrians = showPeaks(rawImage, lenOfPhi, lenOfR, 15)
+		rawImage, pedestrians = self.imageProcessor.showPeaks(rawImage, lenOfPhi, lenOfR, 15)
 		for i in range(lenOfPhi):
 			for j in range(lenOfR):
 				self.canvas.itemconfigure(
 					self.cells[lenOfPhi-i-1][j],
 					fill='#'+COLORS[rawImage[i][j]])
 					
-		
+		pedVar.set(pedestrians)
 
 	def reset(self):
 		""" Deletes all the canvas components (colored rectangles).
@@ -850,86 +851,72 @@ class Point:
 		return self.x, self.y
 	
 	
-def showPeaks(rawImage, lenOfPhi, lenOfR, threshold):
-	copiedImage = copy.deepcopy(rawImage)
-	peaks = getPeaks(rawImage, lenOfPhi, lenOfR, threshold, set())
-	
-	for peak in peaks:
-		x, y = peak.getCoordinates()
-		copiedImage[x][y] = 256
-	
-	return copiedImage, len(peaks)
-	
-def getPeaks(rawImage, lenOfPhi, lenOfR, threshold, peakCoordinates):
-
-	maxValue = - 1
-
-	for i in range(lenOfPhi):
-		previousValue = rawImage[i][0]
-		for j in range(lenOfR):
-			if rawImage[i][j] > maxValue:
-				maxI = i
-				maxJ = j
-				maxValue = rawImage[i][j]
-	
-	if(maxValue > threshold):
-		peakCoordinates.add(Point(maxI, maxJ))
-		rawImage = removePeak(rawImage, maxI, maxJ, lenOfPhi, lenOfR, threshold)
-		peakCoordinates = getPeaks(rawImage, lenOfPhi, lenOfR, threshold, peakCoordinates)
-	
-	return peakCoordinates
-	
-def removePeak(rawImage, i, j, lenOfPhi, lenOfR, threshold):
-
-	checked = [[False for x in range(lenOfPhi)] for y in range(lenOfR)] 
-	checked = removePeakStepByStep(rawImage, checked, i, j, lenOfPhi, lenOfR, threshold)
-	
-	for i in range(lenOfPhi):
-		for j in range(lenOfR):
-			if checked[i][j]:
-				rawImage[i][j] = 0
-				
-	return rawImage
-	
-def removePeakStepByStep(rawImage, checked, i, j, lenOfPhi, lenOfR, threshold):
-	
-	checked[i][j] = True
+class ImageProcessing:
 		
-	if (i - 1 >= 0 and j - 1 >= 0 and not checked[i-1][j-1] and rawImage[i-1][j-1] <= rawImage[i][j]  and rawImage[i-1][j-1] >= threshold):
-		checked = removePeakStepByStep(rawImage, checked, i - 1, j - 1, lenOfPhi, lenOfR, threshold)
-	if (i - 1 >= 0 and not checked[i-1][j] and rawImage[i-1][j] <= rawImage[i][j] and rawImage[i-1][j] >= threshold):
-		checked = removePeakStepByStep(rawImage, checked, i - 1, j, lenOfPhi, lenOfR, threshold)
-	if (i - 1 >= 0 and j + 1 < lenOfR and not checked[i-1][j+1] and rawImage[i-1][j+1] <= rawImage[i][j] and rawImage[i-1][j+1] >= threshold):
-		checked = removePeakStepByStep(rawImage, checked, i - 1, j + 1, lenOfPhi, lenOfR, threshold)
-	if (j - 1 >= 0 and not checked[i][j-1] and rawImage[i][j-1] <= rawImage[i][j] and rawImage[i][j-1] >= threshold):
-		checked = removePeakStepByStep(rawImage, checked, i, j - 1, lenOfPhi, lenOfR, threshold)
-	if (j + 1 < lenOfR and not checked[i][j+1] and rawImage[i][j+1] <= rawImage[i][j] and rawImage[i][j+1] >= threshold):
-		checked = removePeakStepByStep(rawImage, checked, i, j + 1, lenOfPhi, lenOfR, threshold)
-	if (i + 1 < lenOfPhi and j - 1 >= 0 and not checked[i+1][j-1] and rawImage[i+1][j-1] <= rawImage[i][j] and rawImage[i+1][j-1] >= threshold):
-		checked = removePeakStepByStep(rawImage, checked, i + 1, j - 1, lenOfPhi, lenOfR, threshold)
-	if (i + 1 < lenOfPhi and not checked[i+1][j] and rawImage[i+1][j] <= rawImage[i][j] and rawImage[i+1][j] >= threshold):
-		checked = removePeakStepByStep(rawImage, checked, i + 1, j, lenOfPhi, lenOfR, threshold)
-	if (i + 1 < lenOfPhi and j + 1 < lenOfR and not checked[i+1][j+1] and rawImage[i+1][j+1] <= rawImage[i][j] and rawImage[i+1][j+1] >= threshold):
-		checked = removePeakStepByStep(rawImage, checked, +i + 1, j + 1, lenOfPhi, lenOfR, threshold)
+	def showPeaks(self, rawImage, width, height, threshold):
+		copiedImage = copy.deepcopy(rawImage)
+		peaks = self.__getPeaks__(rawImage, width, height, threshold, set())
 		
-	return checked
+		for peak in peaks:
+			x, y = peak.getCoordinates()
+			copiedImage[x][y] = 256
+	
+		return copiedImage, len(peaks)	
+	
+	def __getPeaks__(self, rawImage, width, height, threshold, peakCoordinates):
 
-def isLocalPeak(rawImage, i, j, lenOfPhi, lenOfR):
+		maxValue = - 1
+
+		for i in range(width):
+			previousValue = rawImage[i][0]
+			for j in range(height):
+				if rawImage[i][j] > maxValue:
+					maxI = i
+					maxJ = j
+					maxValue = rawImage[i][j]
+		
+		if(maxValue > threshold):
+			peakCoordinates.add(Point(maxI, maxJ))
+			rawImage = self.__removePeak__(rawImage, maxI, maxJ, width, height, threshold)
+			peakCoordinates = self.__getPeaks__(rawImage, width, height, threshold, peakCoordinates)
+		
+		return peakCoordinates
+		
+	def __removePeak__(self, rawImage, i, j, width, height, threshold):
+
+		checked = [[False for x in range(width)] for y in range(height)] 
+		checked = self.__removePeakStepByStep__(rawImage, checked, i, j, width, height, threshold)
+		
+		for i in range(width):
+			for j in range(height):
+				if checked[i][j]:
+					rawImage[i][j] = 0
+					
+		return rawImage
+		
+	def __removePeakStepByStep__(self, rawImage, checked, i, j, width, height, threshold):
 	
-	if (i - 1 >= 0 and j - 1 >= 0 and rawImage[i-1][j-1] >= rawImage[i][j])\
-		or (i - 1 >= 0 and rawImage[i-1][j] >= rawImage[i][j])\
-		or (i - 1 >= 0 and j + 1 < lenOfR and rawImage[i-1][j+1] >= rawImage[i][j])\
-		or (j - 1 >= 0 and rawImage[i][j-1] >= rawImage[i][j])\
-		or (j + 1 < lenOfR and rawImage[i][j+1] >= rawImage[i][j])\
-		or (i + 1 < lenOfPhi and j - 1 >= 0 and rawImage[i-1][j-1] >= rawImage[i][j])\
-		or (i + 1 < lenOfPhi and rawImage[i-1][j] >= rawImage[i][j])\
-		or (i + 1 < lenOfPhi and j + 1 < lenOfR and rawImage[i-1][j+1] >= rawImage[i][j]):
-			return False
-	else:
-		return True
-	
-	
-	
+		checked[i][j] = True
+			
+		if (i - 1 >= 0 and j - 1 >= 0 and not checked[i-1][j-1] and rawImage[i-1][j-1] <= rawImage[i][j]  and rawImage[i-1][j-1] >= threshold):
+			checked = self.__removePeakStepByStep__(rawImage, checked, i - 1, j - 1, width, height, threshold)
+		if (i - 1 >= 0 and not checked[i-1][j] and rawImage[i-1][j] <= rawImage[i][j] and rawImage[i-1][j] >= threshold):
+			checked = self.__removePeakStepByStep__(rawImage, checked, i - 1, j, width, height, threshold)
+		if (i - 1 >= 0 and j + 1 < height and not checked[i-1][j+1] and rawImage[i-1][j+1] <= rawImage[i][j] and rawImage[i-1][j+1] >= threshold):
+			checked = self.__removePeakStepByStep__(rawImage, checked, i - 1, j + 1, width, height, threshold)
+		if (j - 1 >= 0 and not checked[i][j-1] and rawImage[i][j-1] <= rawImage[i][j] and rawImage[i][j-1] >= threshold):
+			checked = self.__removePeakStepByStep__(rawImage, checked, i, j - 1, width, height, threshold)
+		if (j + 1 < height and not checked[i][j+1] and rawImage[i][j+1] <= rawImage[i][j] and rawImage[i][j+1] >= threshold):
+			checked = self.__removePeakStepByStep__(rawImage, checked, i, j + 1, width, height, threshold)
+		if (i + 1 < width and j - 1 >= 0 and not checked[i+1][j-1] and rawImage[i+1][j-1] <= rawImage[i][j] and rawImage[i+1][j-1] >= threshold):
+			checked = self.__removePeakStepByStep__(rawImage, checked, i + 1, j - 1, width, height, threshold)
+		if (i + 1 < width and not checked[i+1][j] and rawImage[i+1][j] <= rawImage[i][j] and rawImage[i+1][j] >= threshold):
+			checked = self.__removePeakStepByStep__(rawImage, checked, i + 1, j, width, height, threshold)
+		if (i + 1 < width and j + 1 < height and not checked[i+1][j+1] and rawImage[i+1][j+1] <= rawImage[i][j] and rawImage[i+1][j+1] >= threshold):
+			checked = self.__removePeakStepByStep__(rawImage, checked, +i + 1, j + 1, width, height, threshold)
+			
+		return checked
+		
 	
 def rawImage():
 	""" Main app function. Init the main app class, configure the window
