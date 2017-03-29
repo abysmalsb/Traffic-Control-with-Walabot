@@ -113,6 +113,8 @@ class RawImageApp(tk.Frame):
 			self.wlbtPanel.changeEntriesState('disabled')
 			self.srlPanel.changeEntriesState('disabled')
 			self.ctrlPanel.statusVar.set('STATUS_SCANNING')
+			self.trafficPanel.carVar.set(1)
+			self.trafficPanel.pedestrianVar.set(1)
 			self.loop()
 		else:
 			self.ctrlPanel.statusVar.set('WALABOT_DISCONNECTED')
@@ -120,9 +122,9 @@ class RawImageApp(tk.Frame):
 		
 
 	def loop(self):
-				
-		self.trafficLights.update(self, self.mcu, int(round(time.time() * 1000)), 1, 1)
 		
+		cars, pedestrians = self.trafficPanel.getCarAndPedVars()
+		self.trafficLights.update(self, self.mcu, int(round(time.time() * 1000)), int(pedestrians.get()), int(cars.get()))
 		
 		if not self.serialUpdaterThread.isAlive():
 			self.serialUpdaterThread.start()
@@ -504,6 +506,9 @@ class TrafficLightsPanel(tk.LabelFrame):
 		tk.Label(frame, text=(varText).ljust(12)).grid(row=0, column=0)
 		tk.Label(frame, textvariable=strVar).grid(row=0, column=1)
 		return strVar
+		
+	def getCarAndPedVars(self):
+		return self.carVar, self.pedestrianVar
 		
 		
 class SerialController:

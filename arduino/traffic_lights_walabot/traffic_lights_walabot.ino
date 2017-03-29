@@ -42,7 +42,7 @@ void loop() {
       Serial.println("Ready");
     }
     else if (which == 'd') {
-      Serial.println(analogRead(0));
+      Serial.println(10);
     }
 
     while (Serial.available() > 0) {
