@@ -8,6 +8,11 @@ import copy
 import threading
 import tkinter as tk
 
+__author__ = "Balázs Simon"
+__license__ = "GPL"
+__version__ = "1.0.0"
+__details__ = "https://www.hackster.io/Abysmal/traffic-control-with-walabot-6dfe7a"
+
 COLORS = [
 	"000083", "000087", "00008B", "00008F", "000093", "000097", "00009B",
 	"00009F", "0000A3", "0000A7", "0000AB", "0000AF", "0000B3", "0000B7",
