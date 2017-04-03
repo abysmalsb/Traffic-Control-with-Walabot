@@ -145,6 +145,9 @@ class RawImageApp(tk.Frame):
 		
 		
 class SerialUpdaterThread(threading.Thread):	
+	""" Thread used for serial communication. This way the waiting for the communication won't
+		slow down the flow of the app
+	"""
 
 	def __init__(self, threadID, name, app):
 		threading.Thread.__init__(self)
@@ -293,12 +296,18 @@ class WalabotPanel(tk.LabelFrame):
 			
 			
 class LightStates:
+	""" A simple enum indicating the possible states of the traffic lights
+	"""
 	all_red, car_red_and_yellow, car_green, car_yellow, both_red_2, ped_green, ped_green_flashing = range(7)			
 			
 			
 class TrafficLights():
+	""" Traffic light controller class
+	"""
 
 	def __init__(self, srlPanel):
+		""" Init
+		"""
 		self.lightState = LightStates.all_red
 		self.lastUpdateTime = 0
 		self.stateTimes = []
@@ -314,6 +323,8 @@ class TrafficLights():
 		
 		
 	def setStateTiming(self, stateName, millis):
+		""" Giving how long does a light state lasts
+		"""
 		if stateName == LightStates.all_red:
 			self.stateTimes[0] = millis
 		elif stateName == LightStates.car_red_and_yellow:
@@ -330,6 +341,8 @@ class TrafficLights():
 			self.stateTimes[6] = millis
 		
 	def update(self, window, mcu, sysTime, people, vehicles):
+		""" Updating the lights through serial based on the sysTime and state timing
+		"""
 			
 		if vehicles < 0:
 			raise ValueError('You broke the reality! I received negative number of vehicles (', vehicles, ')')
@@ -362,9 +375,9 @@ class TrafficLights():
 				self.currentFunction = '__giveCarsGreen__'
 
 			
-	# as expected, the following give Red/Green functions will only work if you call them in correct order, starting with one of the give green functions
-	#they need to be finished properly	
 	def __giveCarsGreen__(self, master, window, mcu, sysTime, greenMultiplier):
+		""" Setting the state of the traffic lights
+		"""
 		finished = False
 		
 		if self.lightState == LightStates.all_red:
@@ -397,6 +410,8 @@ class TrafficLights():
 		return finished
 	
 	def __giveCarsRed__(self, master, window, mcu, sysTime):
+		""" Setting the state of the traffic lights
+		"""
 		finished = False
 		
 		if self.lightState == LightStates.car_green:
@@ -421,6 +436,8 @@ class TrafficLights():
 			
 	
 	def __givePedsGreen__(self, master, window, mcu, sysTime, greenMultiplier):
+		""" Setting the state of the traffic lights
+		"""
 		finished = False
 		
 		if self.lightState == LightStates.all_red:
@@ -445,6 +462,8 @@ class TrafficLights():
 	
 	
 	def __givePedsRed__(self, master, window, mcu, sysTime):
+		""" Setting the state of the traffic lights
+		"""
 		finished = False
 		
 		if self.lightState == LightStates.ped_green:
@@ -469,6 +488,8 @@ class TrafficLights():
 		
 		
 	def resetLights(self, window, mcu):
+		""" Resetting the light to red-red
+		"""
 		mcu.writeSerialData('c0')
 		mcu.writeSerialData('p0')
 		self.lightState = LightStates.all_red
@@ -508,28 +529,40 @@ class TrafficLightsPanel(tk.LabelFrame):
 		return strVar
 		
 	def getCarAndPedVars(self):
+		""" getter
+		"""
 		return self.carVar, self.pedestrianVar
 		
 		
 class SerialController:
 	
 	def __init__(self, port, baud):
+		""" Initialize and open serial communication
+		"""
 		self.openSerial(port, baud)
 		
 	def getPortBaudRate(self):
+		""" getter
+		"""
 		return self.port, self.baud
 		
 	def writeSerialData(self, data):
+		""" Send data through serial to the traffic light controller mcu
+		"""
 		self.serial.write((data + '\r\n').encode())
 		
 	def readSerialData(self):
+		""" read data through serial from the traffic light controller mcu
+		"""
 		data = ''
 		while self.serial.inWaiting() > 0:
 			data += self.serial.read(1).decode("utf-8")
 			
 		return data.rstrip("\r").strip()
 	
-	def openSerial(self, port, baud):	
+	def openSerial(self, port, baud):
+		""" open serial communication
+		"""
 		self.port = port
 		self.baud = baud
 		self.serial = serial.Serial(
@@ -541,10 +574,14 @@ class SerialController:
 		)
 	
 	def closeSerial(self):
+		""" close serial communication
+		"""
 		self.serial.close()
 	
 
 class SerialPanel(tk.LabelFrame):
+	""" This panel is used to configure serial communication
+	"""
 
 	class SerialParameter(tk.Frame):
 
@@ -579,7 +616,7 @@ class SerialPanel(tk.LabelFrame):
 	class MenuParameter(tk.Frame):
 
 		def __init__(self, master, text, options):
-			""" 
+			""" Initialize the MenuParameter
 			"""
 			tk.Frame.__init__(self, master)
 			tk.Label(self, text=text).pack(side=tk.LEFT, padx=(0, 42), pady=1)
@@ -606,8 +643,10 @@ class SerialPanel(tk.LabelFrame):
 			self.optionsMenu.configure(state=state)		
 
 	def __init__(self, master):
+		""" Initialize the SerialPanel
+		"""		
 		tk.LabelFrame.__init__(self, master, text='Serial Configuration')
-		ports = self.getPorts(self)
+		ports = self.getPorts()
 		self.port = self.MenuParameter(self, 'Select port', ports)
 		self.baud = self.SerialParameter(self, 'Baud		', '115200')
 		
@@ -618,10 +657,14 @@ class SerialPanel(tk.LabelFrame):
 			
 
 	def getParams(self):
+		""" params getter
+		"""
 		port, baud, = self.port.get(), self.baud.get()
 		return port, baud
 		
-	def getPorts(self, master):
+	def getPorts(self):
+		""" get available serial ports
+		"""
 		if sys.platform.startswith('win'):
 			ports = ['COM%s' % (i + 1) for i in range(256)]
 		elif sys.platform.startswith('linux') or sys.platform.startswith('cygwin'):
@@ -643,10 +686,14 @@ class SerialPanel(tk.LabelFrame):
 		return result
 
 	def setParams(self, port, baud):
+		""" setter
+		"""
 		self.port.set(port)
 		self.baud.set(baud)
 
 	def changeEntriesState(self, state):
+		""" enable/disable panel
+		"""
 		for param in self.parameters:
 			param.changeState(state)
 
@@ -848,18 +895,30 @@ class Walabot:
 
 	
 class Point:
+	""" This class is representing a simple 2D point. It just makes handling
+		x y coordinates easier
+	"""
+	
 	def __init__(self, x, y):
+		""" Initialize a point
+		"""
 		self.x = x
 		self.y = y
 		
 	def getCoordinates(self):
+		""" get the stored x and y coordinates 
+		"""
 		return self.x, self.y
 	
 	
 class ImageProcessing:
-		
-	def showPeaks(self, rawImage, threshold):
+	""" Functions for finding objects on the image are packed into this object
+	"""
 	
+	def showPeaks(self, rawImage, threshold):
+		""" Finds the objects on the image, modifies the image to indicate the 
+			objects and also returns the number of objects on the image
+		"""
 	
 		height = len(rawImage)
 		width = len(rawImage[0])
@@ -873,6 +932,8 @@ class ImageProcessing:
 		return copiedImage, len(peaks)	
 	
 	def __getPeaks__(self, rawImage, width, height, threshold, peakCoordinates):
+		""" This recursive function will give you a set of object coordinates on the image
+		"""
 
 		maxValue = - 1
 
@@ -892,6 +953,8 @@ class ImageProcessing:
 		return peakCoordinates
 		
 	def __removePeak__(self, rawImage, i, j, width, height, threshold):
+		""" This function removes the whole hill (object) that is connected to the given i j peak
+		"""
 
 		checked = [[False for x in range(width)] for y in range(height)] 
 		checked = self.__removePeakStepByStep__(rawImage, checked, i, j, width, height, threshold)
@@ -904,6 +967,9 @@ class ImageProcessing:
 		return rawImage
 		
 	def __removePeakStepByStep__(self, rawImage, checked, i, j, width, height, threshold):
+		"""	This recursive function will remove a pixel of an object. Removing a hill is required
+			to find the next highest peak
+		"""
 	
 		checked[i][j] = True
 			
