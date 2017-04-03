@@ -1,3 +1,16 @@
+/**************************************************************
+ * This code controls a simple traffic light using an
+ * Arduino MKR1000 through serial. More info:
+ * https://www.hackster.io/Abysmal/traffic-control-with-walabot-6dfe7a
+ * 
+ * This project is made for "Walabot - Power to the Makers"
+ * contest on hackster.io. More info:
+ * https://www.hackster.io/contests/WalaBot
+ * 
+ * author: Balázs Simon
+ *
+ **************************************************************/
+
 #define PED_GREEN   6
 #define PED_RED     7
 #define CAR_GREEN   8
