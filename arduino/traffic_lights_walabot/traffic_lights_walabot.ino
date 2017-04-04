@@ -1,14 +1,14 @@
 /**************************************************************
- * This code controls a simple traffic light using an
- * Arduino MKR1000 through serial. More info:
- * https://www.hackster.io/Abysmal/traffic-control-with-walabot-6dfe7a
- * 
- * This project is made for "Walabot - Power to the Makers"
- * contest on hackster.io. More info:
- * https://www.hackster.io/contests/WalaBot
- * 
- * author: Balázs Simon
- *
+   This code controls a simple traffic light using an
+   Arduino MKR1000 through serial. More info:
+   https://www.hackster.io/Abysmal/traffic-control-with-walabot-6dfe7a
+
+   This project is made for "Walabot - Power to the Makers"
+   contest on hackster.io. More info:
+   https://www.hackster.io/contests/WalaBot
+
+   author: Balázs Simon
+
  **************************************************************/
 
 #define PED_GREEN   6
@@ -17,11 +17,11 @@
 #define CAR_YELLOW  9
 #define CAR_RED     10
 
-int pedLightState = 0;
-int carLightState = 0;
+int pedLightState = 3;
+int carLightState = 4;
 
-int timePedGreen = 0;
-int pedGreenOn = LOW;
+int lightFlashing = 0;
+int lightOn = LOW;
 
 
 void setup() {
@@ -79,12 +79,14 @@ void updatePedLight(int state) {
       digitalWrite(PED_RED, LOW);
       break;
     case 2: //GREEN FLASHING
-      if (millis() - timePedGreen > 500) {
-        digitalWrite(PED_GREEN, pedGreenOn);
-        pedGreenOn = ~pedGreenOn;
-        timePedGreen = millis();
+      if (millis() - lightFlashing > 500) {
+        digitalWrite(PED_GREEN, lightOn);
+        lightOn = ~lightOn;
+        lightFlashing = millis();
       }
-
+      break;
+    case 3: //DISABLED:
+      digitalWrite(PED_GREEN, LOW);
       digitalWrite(PED_RED, LOW);
   }
 }
@@ -111,6 +113,16 @@ void updateCarLight(int state) {
       digitalWrite(CAR_GREEN, LOW);
       digitalWrite(CAR_YELLOW, HIGH);
       digitalWrite(CAR_RED, LOW);
+      break;
+    case 4: //DISABLED
+      digitalWrite(CAR_GREEN, LOW);
+      digitalWrite(CAR_RED, LOW);
+      if (millis() - lightFlashing > 500) {
+        digitalWrite(CAR_YELLOW, lightOn);
+        lightOn = ~lightOn;
+        lightFlashing = millis();
+      }
+      break;
   }
 }
 

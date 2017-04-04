@@ -752,7 +752,7 @@ class ControlPanel(tk.LabelFrame):
 		""" Applied when 'Stop' button in pressed. Stops the Walabot and the
 			app cycles.
 		"""
-		
+		self.master.mcu.writeSerialData('p3')
 		if hasattr(self.master, 'cyclesId'):
 			self.master.after_cancel(self.master.cyclesId)
 			self.master.wlbtPanel.changeEntriesState('normal')
@@ -765,6 +765,7 @@ class ControlPanel(tk.LabelFrame):
 		self.master.trafficPanel.pedestriansLightVar.set('N/A')
 		self.master.trafficPanel.carLightVar.set('N/A')
 		
+		self.master.mcu.writeSerialData('c4')
 		self.master.stopRunning()
 		
 
