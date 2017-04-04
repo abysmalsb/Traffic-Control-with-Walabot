@@ -16,11 +16,13 @@
 #define CAR_GREEN   8
 #define CAR_YELLOW  9
 #define CAR_RED     10
+#define TIMEOUT     7500
 
 int pedLightState = 3;
 int carLightState = 4;
 
-int lightFlashing = 0;
+long timeSinceLastUpdate = 0;
+long lightFlashing = 0;
 int lightOn = LOW;
 
 
@@ -39,10 +41,10 @@ void loop() {
     char which = Serial.peek();
     /*
       What does these characters mean?
-      s - getting status (Ready)
+      s - the master tries to find an mcu with proper behaviour. Answer must be "OK" to work
       p - setting pedestrian lights state
       c - setting car lights state
-      d - sending car data
+      d - sending car data and it also used for detect the presence of the master
     */
     if (which == 'p') {
       Serial.read();
@@ -52,7 +54,7 @@ void loop() {
       carLightState = Serial.parseInt();
     }
     else if (which == 's') {
-      Serial.println("Ready");
+      Serial.println("OK");
     }
     else if (which == 'd') {
       Serial.println(analogRead(A0) / 100);
@@ -61,6 +63,13 @@ void loop() {
     while (Serial.available() > 0) {
       Serial.read();
     }
+    
+    timeSinceLastUpdate = millis();
+  }
+
+  if(millis() - timeSinceLastUpdate > TIMEOUT){
+    pedLightState = 3;
+    carLightState = 4;
   }
 
   updatePedLight(pedLightState);

@@ -89,7 +89,7 @@ class RawImageApp(tk.Frame):
 			time.sleep(1)
 			response = self.mcu.readSerialData()
 			
-			if response != 'Ready':
+			if response != 'OK':
 				self.ctrlPanel.statusVar.set('MCU_NOT_RESPONDING_PROPERLY')
 				return
 				
@@ -579,9 +579,13 @@ class SerialController:
 		)
 	
 	def closeSerial(self):
-		""" close serial communication
+		""" close serial communication and notify mcu about it
 		"""
-		self.serial.close()
+		if(self.serial.isOpen()):
+			self.writeSerialData('p3')
+			time.sleep(0.01)
+			self.writeSerialData('c4')
+			self.serial.close()
 	
 
 class SerialPanel(tk.LabelFrame):
@@ -752,7 +756,7 @@ class ControlPanel(tk.LabelFrame):
 		""" Applied when 'Stop' button in pressed. Stops the Walabot and the
 			app cycles.
 		"""
-		self.master.mcu.writeSerialData('p3')
+		
 		if hasattr(self.master, 'cyclesId'):
 			self.master.after_cancel(self.master.cyclesId)
 			self.master.wlbtPanel.changeEntriesState('normal')
@@ -765,7 +769,6 @@ class ControlPanel(tk.LabelFrame):
 		self.master.trafficPanel.pedestriansLightVar.set('N/A')
 		self.master.trafficPanel.carLightVar.set('N/A')
 		
-		self.master.mcu.writeSerialData('c4')
 		self.master.stopRunning()
 		
 
