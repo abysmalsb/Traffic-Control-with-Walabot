@@ -809,7 +809,8 @@ class CanvasPanel(tk.LabelFrame):
 				lenOfPhi	Number of cells in Phi axis.
 				lenOfR	  Number of cells in R axis.
 		"""
-		rawImage, pedestrians = self.imageProcessor.showPeaks(rawImage, 15)
+		_, _, _, threshold, _= self.master.wlbtPanel.getParams()
+		rawImage, pedestrians = self.imageProcessor.showPeaks(rawImage, threshold)
 		for i in range(lenOfPhi):
 			for j in range(lenOfR):
 				self.canvas.itemconfigure(
