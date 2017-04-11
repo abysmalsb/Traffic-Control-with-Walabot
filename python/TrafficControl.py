@@ -50,7 +50,7 @@ COLORS = [
 	"DF0000", "DB0000", "D70000", "D30000", "CF0000", "CB0000", "C70000",
 	"C30000", "BF0000", "BB0000", "B70000", "B30000", "AF0000", "AB0000",
 	"A70000", "A30000", "9F0000", "9B0000", "970000", "930000", "8F0000",
-	"8B0000", "870000", "830000", "7F0000", "FFFFFF"]
+	"8B0000", "870000", "830000", "7F0000", "FFFFFF", "000000"]
 	
 
 APP_X, APP_Y = 50, 50  # location of top-left corner of window
@@ -269,10 +269,11 @@ class WalabotPanel(tk.LabelFrame):
 		self.pMax = self.WalabotParameter(self, 'Phi   Max', -90, 90, 45.0)
 		self.pRes = self.WalabotParameter(self, 'Phi   Res', 0.1, 10, 2.0)
 		self.thld = self.WalabotParameter(self, 'Threshold', 0.1, 100, 15.0)
+		self.hrzn = self.WalabotParameter(self, 'Horizon', 0.1, 100, 10.0)
 		self.mti = self.WalabotParameterMTI(self)
 		self.parameters = (
 			self.rMin, self.rMax, self.rRes, self.tMin, self.tMax, self.tRes,
-			self.pMin, self.pMax, self.pRes, self.thld, self.mti)
+			self.pMin, self.pMax, self.pRes, self.thld, self.hrzn, self.mti)
 		for param in self.parameters:
 			param.pack(anchor=tk.W)
 
@@ -282,6 +283,9 @@ class WalabotPanel(tk.LabelFrame):
 		pParams = (self.pMin.get(), self.pMax.get(), self.pRes.get())
 		thldParam, mtiParam = self.thld.get(), self.mti.get()
 		return rParams, tParams, pParams, thldParam, mtiParam
+		
+	def gethrzn(self):
+		return self.hrzn.get()
 
 	def setParams(self, rParams, thetaParams, phiParams, threshold):
 		self.rMin.set(rParams[0])
@@ -810,7 +814,7 @@ class CanvasPanel(tk.LabelFrame):
 				lenOfR	  Number of cells in R axis.
 		"""
 		_, _, _, threshold, _= self.master.wlbtPanel.getParams()
-		rawImage, pedestrians = self.imageProcessor.showPeaks(rawImage, threshold)
+		rawImage, pedestrians = self.imageProcessor.showPeaks(rawImage, threshold, int(self.master.wlbtPanel.gethrzn()))
 		for i in range(lenOfPhi):
 			for j in range(lenOfR):
 				self.canvas.itemconfigure(
@@ -925,21 +929,30 @@ class ImageProcessing:
 	""" Functions for finding objects on the image are packed into this object
 	"""
 	
-	def showPeaks(self, rawImage, threshold):
+	def showPeaks(self, rawImage, threshold, horizon):
 		""" Finds the objects on the image, modifies the image to indicate the 
 			objects and also returns the number of objects on the image
 		"""
 	
-		height = len(rawImage)
+		height = len(rawImage) - horizon
 		width = len(rawImage[0])
-		copiedImage = copy.deepcopy(rawImage)
-		peaks = self.__getPeaks__(rawImage, width, height, threshold, set())
+		copiedImage = [([0] * width) for row in iter(range(height)) ]
+		
+		for i in range(height - 1):
+			for j in range(width):
+				copiedImage[i][j] = rawImage[i][j]
+		
+		
+		peaks = self.__getPeaks__(copiedImage, width, height, threshold, set())
 		
 		for peak in peaks:
 			x, y = peak.getCoordinates()
-			copiedImage[x][y] = 256
+			rawImage[x][y] = 256
+			
+		for col in range(width):
+			rawImage[height - 1][col] = 257
 	
-		return copiedImage, len(peaks)	
+		return rawImage, len(peaks)	
 	
 	def __getPeaks__(self, rawImage, width, height, threshold, peakCoordinates):
 		""" This recursive function will give you a set of object coordinates on the image
