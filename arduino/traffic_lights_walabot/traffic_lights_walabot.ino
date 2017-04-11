@@ -11,11 +11,12 @@
 
  **************************************************************/
 
-#define PED_GREEN   6
-#define PED_RED     7
-#define CAR_GREEN   8
-#define CAR_YELLOW  9
-#define CAR_RED     10
+#define PED_GREEN   7
+#define PED_RED     8
+#define CAR_GREEN   9
+#define CAR_YELLOW  10
+#define CAR_RED     11
+#define POT_PIN     A0
 #define TIMEOUT     7500
 
 int pedLightState = 3;
@@ -57,7 +58,7 @@ void loop() {
       Serial.println("OK");
     }
     else if (which == 'd') {
-      Serial.println(analogRead(A0) / 100);
+      Serial.println(analogRead(POT_PIN) / 100);
     }
 
     while (Serial.available() > 0) {

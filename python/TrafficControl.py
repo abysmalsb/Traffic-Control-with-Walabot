@@ -86,9 +86,10 @@ class RawImageApp(tk.Frame):
 			self.mcu = SerialController(*serialParams)
 
 			self.mcu.writeSerialData('s')
-			time.sleep(1)
+			time.sleep(2)
 			response = self.mcu.readSerialData()
 			
+			print(response)
 			if response != 'OK':
 				self.ctrlPanel.statusVar.set('MCU_NOT_RESPONDING_PROPERLY')
 				return
