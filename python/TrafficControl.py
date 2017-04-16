@@ -1022,7 +1022,7 @@ def rawImage():
 		and start the mainloop.
 	"""
 	root = tk.Tk()
-	root.title('Walabot - Raw Image Slice Example')
+	root.title('Traffic Control with Walabot')
 	RawImageApp(root).pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 	root.geometry("+{}+{}".format(APP_X, APP_Y))  # set window location
 	root.update()
